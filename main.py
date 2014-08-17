@@ -22,47 +22,67 @@ from time import mktime
 from google.appengine.ext import ndb
 
 class SensorData(ndb.Model):
-    sensor_id = ndb.IntegerProperty(indexed=True)
-    value = ndb.IntegerProperty(indexed=False)
-    time = ndb.DateTimeProperty(auto_now_add=True)
+    data = ndb.StringProperty(indexed=False)
+
+    @classmethod
+    def query_sensor(cls, sensor_id):
+        return cls.query(ancestor=ndb.Key('Sensor', sensor_id))
+
 
 class SensorHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        if not isinstance(sensor_id, int):
-            sensor_id = int(sensor_id)
+        # if not isinstance(sensor_id, int):
+        #     sensor_id = int(sensor_id)
 
-        query = SensorData.query(SensorData.sensor_id == sensor_id).order(-SensorData.time)
-        sensors_data = query.fetch()
+        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)[0]
 
-        response_data = []
-        for sensor_data in sensors_data:
-            timestamp = mktime(sensor_data.time.timetuple())
-            response_data.append({'value': sensor_data.value, 'time': timestamp})
-        self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
+        # print sensor_data
+        self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'	
+        # self.response.headers['Access-Control-Allow-Origin'] = 'http://localhost'	
         self.response.headers['Content-Type'] = 'application/json'
-        self.response.out.write(json.dumps(response_data))
+        self.response.write(sensor_data.data)
+        
+        # response_data = []
+        # for sensor_data in sensors_data:
+        #     timestamp = mktime(sensor_data.time.timetuple())
+        #     response_data.append({'value': sensor_data.value, 'time': timestamp})
+        # self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
+        # self.response.headers['Content-Type'] = 'application/json'
+        # self.response.out.write(json.dumps(response_data))
         
 
     def post(self, sensor_id):
 
-        request_data = json.loads(self.request.body)
-        if not isinstance(sensor_id, int):
-            sensor_id = int(sensor_id)
-        if 'value' in request_data:
-            value = request_data['value']
-        if 'time' in request_data:
-            time = datetime.fromtimestamp(request_data['time'])
+        # request_data = json.loads(self.request.body)
+        # if not isinstance(sensor_id, int):
+        #     sensor_id = int(sensor_id)
+        # if 'value' in request_data:
+        #     value = request_data['value']
+        # if 'time' in request_data:
+        #     time = datetime.fromtimestamp(request_data['time'])
 
-        sensor_data = SensorData()
-        sensor_data.sensor_id = sensor_id
-        sensor_data.value = value
-        if time:
-            sensor_data.time = time
+        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
+        if not sensor_data:
+            print "Create new sensor data"
+            sensor_data = SensorData(parent=ndb.Key('Sensor', sensor_id))
+            data = []
+        else:
+            print "Using existing sensor data"
+            sensor_data = sensor_data[0]
+            data = json.loads(sensor_data.data)
 
-        obj = sensor_data.put()
-        self.response.write(str(obj.id()))
+        data.append(json.loads(self.request.body))
+        sensor_data.data = json.dumps(data)
+        sensor_data.put()
+        self.response.write("OK")
+        # sensor_data.value = value
+        # if time:
+        #     sensor_data.time = time
+
+        #obj = sensor_data.put()
+        #self.response.write(str(obj.id()))
 
 app = webapp2.WSGIApplication([
     ('/sensor/(\d+)', SensorHandler)
