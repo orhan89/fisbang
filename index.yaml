@@ -13,5 +13,4 @@ indexes:
 - kind: SensorData
   properties:
   - name: sensor_id
-  - name: time
     direction: desc

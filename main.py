@@ -21,6 +21,8 @@ from time import mktime
 
 from google.appengine.ext import ndb
 
+STANDARD_LIMIT = 100
+
 class SensorData(ndb.Model):
     data = ndb.StringProperty(indexed=False)
 
@@ -33,35 +35,30 @@ class SensorHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        # if not isinstance(sensor_id, int):
-        #     sensor_id = int(sensor_id)
+        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
 
-        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)[0]
+        if sensor_data:
+            sensor_data = json.loads(sensor_data[0].data)
 
-        # print sensor_data
-        self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'	
-        # self.response.headers['Access-Control-Allow-Origin'] = 'http://localhost'	
-        self.response.headers['Content-Type'] = 'application/json'
-        self.response.write(sensor_data.data)
-        
-        # response_data = []
-        # for sensor_data in sensors_data:
-        #     timestamp = mktime(sensor_data.time.timetuple())
-        #     response_data.append({'value': sensor_data.value, 'time': timestamp})
-        # self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
-        # self.response.headers['Content-Type'] = 'application/json'
-        # self.response.out.write(json.dumps(response_data))
-        
+            time = self.request.get('time')
+            if time:
+                sensor_data = [data for data in sensor_data if data['time'] >= float(time)]
+
+            limit= self.request.get('limit', STANDARD_LIMIT)
+            print limit
+            if len(sensor_data) > int(limit):
+                sensor_data = sensor_data[-int(limit):]
+
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(sensor_data))
+
+        else:
+            self.response.status = 404
+            self.response.write("Sensor not found")
 
     def post(self, sensor_id):
-
-        # request_data = json.loads(self.request.body)
-        # if not isinstance(sensor_id, int):
-        #     sensor_id = int(sensor_id)
-        # if 'value' in request_data:
-        #     value = request_data['value']
-        # if 'time' in request_data:
-        #     time = datetime.fromtimestamp(request_data['time'])
 
         sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
         if not sensor_data:
@@ -77,12 +74,6 @@ class SensorHandler(webapp2.RequestHandler):
         sensor_data.data = json.dumps(data)
         sensor_data.put()
         self.response.write("OK")
-        # sensor_data.value = value
-        # if time:
-        #     sensor_data.time = time
-
-        #obj = sensor_data.put()
-        #self.response.write(str(obj.id()))
 
 app = webapp2.WSGIApplication([
     ('/sensor/(\d+)', SensorHandler)
