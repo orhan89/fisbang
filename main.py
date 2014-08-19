@@ -20,6 +20,7 @@ from datetime import datetime
 from time import mktime
 
 from google.appengine.ext import ndb
+from google.appengine.api import memcache
 
 STANDARD_LIMIT = 100
 
@@ -35,28 +36,34 @@ class SensorHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
+        sensor_data = memcache.get('sensor_data:%s' % sensor_id)
+        if sensor_data is None:
+            sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
 
-        if sensor_data:
-            sensor_data = json.loads(sensor_data[0].data)
-
-            time = self.request.get('time')
-            if time:
-                sensor_data = [data for data in sensor_data if data['time'] >= float(time)]
-
-            limit= self.request.get('limit', STANDARD_LIMIT)
-            print limit
-            if len(sensor_data) > int(limit):
-                sensor_data = sensor_data[-int(limit):]
-
-            self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
-            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
-            self.response.headers['Content-Type'] = 'application/json'
-            self.response.write(json.dumps(sensor_data))
-
+            if sensor_data:
+                sensor_data = json.loads(sensor_data[0].data)
+                memcache.add('sensor_data:%s' % sensor_id, sensor_data, 60)
+            else:
+                self.response.status = 404
+                self.response.write("Sensor not found")
+                return
         else:
-            self.response.status = 404
-            self.response.write("Sensor not found")
+            print "Using data from Memcache"
+            print memcache.get_stats()
+
+        time = self.request.get('time')
+        if time:
+            sensor_data = [data for data in sensor_data if data['time'] > float(time)]
+
+        limit= self.request.get('limit', STANDARD_LIMIT)
+        if len(sensor_data) > int(limit):
+            sensor_data = sensor_data[-int(limit):]
+
+        self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
+        self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps(sensor_data))
+
 
     def post(self, sensor_id):
 
@@ -73,6 +80,12 @@ class SensorHandler(webapp2.RequestHandler):
         data.append(json.loads(self.request.body))
         sensor_data.data = json.dumps(data)
         sensor_data.put()
+        if memcache.get('sensor_data:%s' % sensor_id):
+            print "Updating memcache"
+            memcache.set("sensor_data:%s" % sensor_id, data)
+        else:
+            print "Create new memcache"
+            memcache.add('sensor_data:%s' % sensor_id, data, 60)        
         self.response.write("OK")
 
 app = webapp2.WSGIApplication([
