@@ -4,8 +4,8 @@ import random
 from datetime import datetime
 from time import mktime, sleep
 
-# url  = "http://fisbang-api.appspot.com/"
-url  = "http://localhost:8080/"
+url  = "http://fisbang-api.appspot.com/"
+# url  = "http://localhost:8080/"
 
 def get_data():
     v = 220 + int(random.random()*10) - int(random.random()*10)

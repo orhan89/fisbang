@@ -59,8 +59,8 @@ class SensorHandler(webapp2.RequestHandler):
         if len(sensor_data) > int(limit):
             sensor_data = sensor_data[-int(limit):]
 
-        self.response.headers['Access-Control-Allow-Origin'] = 'http://www.fisbang.com'
-        self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+        self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+        # self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
         self.response.headers['Content-Type'] = 'application/json'
         self.response.write(json.dumps(sensor_data))
 
