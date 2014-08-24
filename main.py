@@ -16,13 +16,35 @@
 #
 import webapp2
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import mktime
 
 from google.appengine.ext import ndb
 from google.appengine.api import memcache
 
 STANDARD_LIMIT = 100
+
+def get_sensor_data(sensor_id, time=None, limit=None):
+    sensor_data = memcache.get('sensor_data:%s' % sensor_id)
+    if sensor_data is None:
+        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
+
+        if sensor_data:
+            sensor_data = json.loads(sensor_data[0].data)
+            memcache.add('sensor_data:%s' % sensor_id, sensor_data, 60)
+        else:
+            return None
+    else:
+        print "Using data from Memcache"
+        print memcache.get_stats()
+
+    if time:
+        sensor_data = [data for data in sensor_data if data['time'] > float(time)]
+
+    if isinstance(limit, int) and len(sensor_data) > int(limit):
+        sensor_data = sensor_data[-int(limit):]
+
+    return sensor_data
 
 class SensorData(ndb.Model):
     data = ndb.StringProperty(indexed=False)
@@ -32,38 +54,85 @@ class SensorData(ndb.Model):
         return cls.query(ancestor=ndb.Key('Sensor', sensor_id))
 
 
-class SensorHandler(webapp2.RequestHandler):
+class DaylyHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        sensor_data = memcache.get('sensor_data:%s' % sensor_id)
-        if sensor_data is None:
-            sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
+        all_sensor_data = get_sensor_data(sensor_id)
 
-            if sensor_data:
-                sensor_data = json.loads(sensor_data[0].data)
-                memcache.add('sensor_data:%s' % sensor_id, sensor_data, 60)
-            else:
-                self.response.status = 404
-                self.response.write("Sensor not found")
-                return
+        now = datetime.now()
+        date = datetime(year = now.year, month=1, day = 1)
+        offset_day = timedelta(days=1)
+
+        sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] > float(mktime((date+days*offset_day).timetuple())) and data['time'] < float(mktime((date+(days+1)*offset_day).timetuple()))]), 'days':(days+1), 'time':float(mktime((date+days*offset_day).timetuple()))} for days in range(0,(now.isocalendar()[1]*7+now.isocalendar()[2]))]
+
+        if not sensor_data is None:
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(sensor_data))
         else:
-            print "Using data from Memcache"
-            print memcache.get_stats()
+            self.response.status = 404
+            self.response.write("Sensor not found")
 
-        time = self.request.get('time')
-        if time:
-            sensor_data = [data for data in sensor_data if data['time'] > float(time)]
+class WeeklyHandler(webapp2.RequestHandler):
 
+    def get(self, sensor_id):
+
+        all_sensor_data = get_sensor_data(sensor_id)
+
+        now = datetime.now()
+        date = datetime(year = now.year, month=1, day = 1)
+        offset_week = timedelta(weeks=1)
+
+        sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] > float(mktime((date+week*offset_week).timetuple())) and data['time'] < float(mktime((date+(week+1)*offset_week).timetuple()))]), 'week':(week+1),  'time':float(mktime((date+week*offset_week).timetuple()))} for week in range(0,now.isocalendar()[1])]
+
+        if not sensor_data is None:
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(sensor_data))
+        else:
+            self.response.status = 404
+            self.response.write("Sensor not found")
+
+class MonthlyHandler(webapp2.RequestHandler):
+
+    def get(self, sensor_id):
+
+        all_sensor_data = get_sensor_data(sensor_id)
+
+        now = datetime.now()
+        date = datetime(year = now.year, month=1, day = 1)
+
+        sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] >= float(mktime((datetime(year=now.year, month=(months+1), day=1)).timetuple())) and data['time'] < float(mktime((datetime(year=now.year, month=(months+2), day=1)).timetuple()))]), 'month':(months+1),  'time':float(mktime((datetime(year=now.year, month=(months+1), day=1)).timetuple()))} for months in range(0,(now.month))]
+
+        if not sensor_data is None:
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(sensor_data))
+        else:
+            self.response.status = 404
+            self.response.write("Sensor not found")
+
+class SensorDataHandler(webapp2.RequestHandler):
+
+    def get(self, sensor_id):
+
+        time = self.request.get('time', None)
         limit= self.request.get('limit', STANDARD_LIMIT)
-        if len(sensor_data) > int(limit):
-            sensor_data = sensor_data[-int(limit):]
 
-        self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
-        # self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
-        self.response.headers['Content-Type'] = 'application/json'
-        self.response.write(json.dumps(sensor_data))
+        sensor_data = get_sensor_data(sensor_id, time,limit)
 
+        if not sensor_data is None:
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(sensor_data))
+        else:
+            self.response.status = 404
+            self.response.write("Sensor not found")
 
     def post(self, sensor_id):
 
@@ -89,5 +158,8 @@ class SensorHandler(webapp2.RequestHandler):
         self.response.write("OK")
 
 app = webapp2.WSGIApplication([
-    ('/sensor/(\d+)', SensorHandler)
+    ('/sensor/(\d+)', SensorDataHandler),
+    ('/sensor/(\d+)/monthly', MonthlyHandler),
+    ('/sensor/(\d+)/weekly', WeeklyHandler),
+    ('/sensor/(\d+)/dayly', DaylyHandler)
 ], debug=True)

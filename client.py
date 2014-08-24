@@ -4,8 +4,8 @@ import random
 from datetime import datetime
 from time import mktime, sleep
 
-url  = "http://fisbang-api.appspot.com/"
-# url  = "http://localhost:8080/"
+# url  = "http://fisbang-api.appspot.com/"
+url  = "http://localhost:8080/"
 
 def get_data():
     v = 220 + int(random.random()*10) - int(random.random()*10)
@@ -13,8 +13,7 @@ def get_data():
     p = v*i
     return v, i, p
     
-def send_data(sensor, data):
-    time = mktime(datetime.now().timetuple())
+def send_data(sensor, data, time):
     body = json.dumps({"time": time, "value":data})
     print url+"sensor/"+str(sensor)
     try:
@@ -26,9 +25,15 @@ def send_data(sensor, data):
     except:
         print "Error Sending Data"
 
-while True:
+now = datetime.now()
+date = datetime(year = now.year, month=1, day = 1)
+time = mktime(date.timetuple())
+offset_hour = 60*60
+while time < mktime(now.timetuple()):
     data = get_data()
     for idx, sensor_data in enumerate(data):
-        send_data(idx, sensor_data)
-    sleep(2)
+        send_data(idx, sensor_data, time) 
+        # send_data(idx, sensor_data, mktime(datetime.now().timetuple())) # live 
+    time += offset_hour
+    #sleep(2)
         
