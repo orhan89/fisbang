@@ -9,7 +9,7 @@ url  = "http://localhost:8080/"
 
 def get_data():
     v = 220 + int(random.random()*10) - int(random.random()*10)
-    i = 5 + random.random()
+    i = 5 + (random.random()*5) - (random.random()*5)
     p = v*i
     return v, i, p
     
@@ -28,12 +28,14 @@ def send_data(sensor, data, time):
 now = datetime.now()
 date = datetime(year = now.year, month=1, day = 1)
 time = mktime(date.timetuple())
-offset_hour = 60*60
+offset_day = 60*60*24
+count = 0
 while time < mktime(now.timetuple()):
     data = get_data()
     for idx, sensor_data in enumerate(data):
         send_data(idx, sensor_data, time) 
         # send_data(idx, sensor_data, mktime(datetime.now().timetuple())) # live 
-    time += offset_hour
+    time += offset_day
+    count += 1
+    print count
     #sleep(2)
-        
