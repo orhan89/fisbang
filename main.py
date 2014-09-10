@@ -53,6 +53,61 @@ class SensorData(ndb.Model):
     def query_sensor(cls, sensor_id):
         return cls.query(ancestor=ndb.Key('Sensor', sensor_id))
 
+class TotalEnergyHandler(webapp2.RequestHandler):
+
+    def get(self, sensor_id):
+
+        now = datetime.now()
+        days_number = now.isocalendar()[1]*7 + now.isocalendar()[2]
+        energy_data = memcache.get('energy_data:%s' %(sensor_id))
+
+        if energy_data is None:
+            all_sensor_data = get_sensor_data(sensor_id)
+
+            start_date = datetime(year = now.year, month=1, day = 1)
+            offset_day = timedelta(days=1)
+
+            energy_data= [ {'value':(lambda xs: (sum(xs)/len(xs)if xs else 0)*((now-start_date).days*24))([data['value'] for data in all_sensor_data if data['time'] > float(mktime(start_date.timetuple())) and data['time'] < float(mktime(now.timetuple()))]), 'start_time':float(mktime(start_date.timetuple())), 'end_time':float(mktime(now.timetuple()))} ]
+
+            memcache.add('energy_data:%s' % (sensor_id), energy_data, 60)
+
+        if not energy_data is None:
+            #self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(energy_data))
+        else:
+            self.response.status = 404
+            self.response.write("Sensor not found")
+
+class TotalEnergy2Handler(webapp2.RequestHandler):
+
+    def get(self, sensor_id, wattage):
+
+        now = datetime.now()
+        days_number = now.isocalendar()[1]*7 + now.isocalendar()[2]
+        ratio = float(wattage)/20
+        print ratio
+        energy_data = memcache.get('energy2_data:%s:%s' %(sensor_id, ratio))
+
+        if energy_data is None:
+            all_sensor_data = get_sensor_data(sensor_id)
+
+            start_date = datetime(year = now.year, month=1, day = 1)
+            offset_day = timedelta(days=1)
+
+            energy_data= [ {'value':(lambda xs: (sum(xs)/len(xs)if xs else 0)*((now-start_date).days*24))([data['value']*ratio for data in all_sensor_data if data['time'] > float(mktime(start_date.timetuple())) and data['time'] < float(mktime(now.timetuple()))]), 'start_time':float(mktime(start_date.timetuple())), 'end_time':float(mktime(now.timetuple()))} ]
+
+            memcache.add('energy2_data:%s:%s' % (sensor_id, ratio), energy_data, 60)
+
+        if not energy_data is None:
+            #self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
+            self.response.headers['Content-Type'] = 'application/json'
+            self.response.write(json.dumps(energy_data))
+        else:
+            self.response.status = 404
+            self.response.write("Sensor not found")
 
 class DailyHandler(webapp2.RequestHandler):
 
@@ -181,5 +236,7 @@ app = webapp2.WSGIApplication([
     ('/sensor/(\d+)', SensorDataHandler),
     ('/sensor/(\d+)/monthly', MonthlyHandler),
     ('/sensor/(\d+)/weekly', WeeklyHandler),
-    ('/sensor/(\d+)/daily', DailyHandler)
+    ('/sensor/(\d+)/daily', DailyHandler),
+    ('/sensor/(\d+)/energy', TotalEnergyHandler),
+    ('/sensor/(\d+)/energy2/(\d+)', TotalEnergy2Handler),
 ], debug=True)
