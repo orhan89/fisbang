@@ -54,20 +54,27 @@ class SensorData(ndb.Model):
         return cls.query(ancestor=ndb.Key('Sensor', sensor_id))
 
 
-class DaylyHandler(webapp2.RequestHandler):
+class DailyHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        all_sensor_data = get_sensor_data(sensor_id)
-
         now = datetime.now()
-        date = datetime(year = now.year, month=1, day = 1)
-        offset_day = timedelta(days=1)
+        days_number = now.isocalendar()[1]*7 + now.isocalendar()[2]
+        sensor_data = memcache.get('sensor_data:%s:daily:%s' %(sensor_id, days_number))
+                                   
+        if sensor_data is None:
+        
+            all_sensor_data = get_sensor_data(sensor_id)
+    
+            date = datetime(year = now.year, month=1, day = 1)
+            offset_day = timedelta(days=1)
+    
+            sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] > float(mktime((date+days*offset_day).timetuple())) and data['time'] < float(mktime((date+(days+1)*offset_day).timetuple()))]), 'days':(days+1), 'time':float(mktime((date+days*offset_day).timetuple()))} for days in range(0,(now.isocalendar()[1]*7+now.isocalendar()[2]))]
 
-        sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] > float(mktime((date+days*offset_day).timetuple())) and data['time'] < float(mktime((date+(days+1)*offset_day).timetuple()))]), 'days':(days+1), 'time':float(mktime((date+days*offset_day).timetuple()))} for days in range(0,(now.isocalendar()[1]*7+now.isocalendar()[2]))]
+            memcache.add('sensor_data:%s:daily:%s' % (sensor_id, days_number), sensor_data, 60)
 
         if not sensor_data is None:
-            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            #self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
             self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
             self.response.headers['Content-Type'] = 'application/json'
             self.response.write(json.dumps(sensor_data))
@@ -79,16 +86,22 @@ class WeeklyHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        all_sensor_data = get_sensor_data(sensor_id)
-
         now = datetime.now()
-        date = datetime(year = now.year, month=1, day = 1)
-        offset_week = timedelta(weeks=1)
+        weeks_number = now.isocalendar()[1]
+        sensor_data = memcache.get('sensor_data:%s:weekly:%s' %(sensor_id, weeks_number))
 
-        sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] > float(mktime((date+week*offset_week).timetuple())) and data['time'] < float(mktime((date+(week+1)*offset_week).timetuple()))]), 'week':(week+1),  'time':float(mktime((date+week*offset_week).timetuple()))} for week in range(0,now.isocalendar()[1])]
+        if sensor_data is None:
+            all_sensor_data = get_sensor_data(sensor_id)
+    
+            date = datetime(year = now.year, month=1, day = 1)
+            offset_week = timedelta(weeks=1)
+    
+            sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] > float(mktime((date+week*offset_week).timetuple())) and data['time'] < float(mktime((date+(week+1)*offset_week).timetuple()))]), 'week':(week+1),  'time':float(mktime((date+week*offset_week).timetuple()))} for week in range(0,now.isocalendar()[1])]
+                                   
+            memcache.add('sensor_data:%s:weekly:%s' % (sensor_id, weeks_number), sensor_data, 60)
 
         if not sensor_data is None:
-            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            #self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
             self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
             self.response.headers['Content-Type'] = 'application/json'
             self.response.write(json.dumps(sensor_data))
@@ -100,15 +113,22 @@ class MonthlyHandler(webapp2.RequestHandler):
 
     def get(self, sensor_id):
 
-        all_sensor_data = get_sensor_data(sensor_id)
 
         now = datetime.now()
-        date = datetime(year = now.year, month=1, day = 1)
+        months_number = now.month
+        sensor_data = memcache.get('sensor_data:%s:monthly:%s' %(sensor_id, months_number))
 
-        sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] >= float(mktime((datetime(year=now.year, month=(months+1), day=1)).timetuple())) and data['time'] < float(mktime((datetime(year=now.year, month=(months+2), day=1)).timetuple()))]), 'month':(months+1),  'time':float(mktime((datetime(year=now.year, month=(months+1), day=1)).timetuple()))} for months in range(0,(now.month))]
+        if sensor_data is None:
+            all_sensor_data = get_sensor_data(sensor_id)
+    
+            date = datetime(year = now.year, month=1, day = 1)
+    
+            sensor_data= [{'value':(lambda xs: sum(xs)/len(xs) if xs else 0)([data['value'] for data in all_sensor_data if data['time'] >= float(mktime((datetime(year=now.year, month=(months+1), day=1)).timetuple())) and data['time'] < float(mktime((datetime(year=now.year, month=(months+2), day=1)).timetuple()))]), 'month':(months+1),  'time':float(mktime((datetime(year=now.year, month=(months+1), day=1)).timetuple()))} for months in range(0,(now.month))]
+
+            memcache.add('sensor_data:%s:monthly:%s' % (sensor_id, months_number), sensor_data, 60)
 
         if not sensor_data is None:
-            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            #self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
             self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
             self.response.headers['Content-Type'] = 'application/json'
             self.response.write(json.dumps(sensor_data))
@@ -126,7 +146,7 @@ class SensorDataHandler(webapp2.RequestHandler):
         sensor_data = get_sensor_data(sensor_id, time,limit)
 
         if not sensor_data is None:
-            self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
+            #self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.com'
             self.response.headers['Access-Control-Allow-Origin'] = 'http://app.fisbang.local'
             self.response.headers['Content-Type'] = 'application/json'
             self.response.write(json.dumps(sensor_data))
@@ -161,5 +181,5 @@ app = webapp2.WSGIApplication([
     ('/sensor/(\d+)', SensorDataHandler),
     ('/sensor/(\d+)/monthly', MonthlyHandler),
     ('/sensor/(\d+)/weekly', WeeklyHandler),
-    ('/sensor/(\d+)/dayly', DaylyHandler)
+    ('/sensor/(\d+)/daily', DailyHandler)
 ], debug=True)
