@@ -277,7 +277,7 @@ class DeviceHandler(webapp2.RequestHandler):
         name = request_data['name']
 
         print "Create new device"
-        device = Device(parent=ndb.Key('Environment', environment_id))
+        device = Device(parent=ndb.Key(urlsafe=environment_id))
         
         device.name = name
         key = device.put()
@@ -300,7 +300,7 @@ class EnvironmentHandler(webapp2.RequestHandler):
         name = request_data['name']
 
         print "Create new environment"
-        environment = Environment(parent=ndb.Key('Building', building_id))
+        environment = Environment(parent=ndb.Key(urlsafe=building_id))
         
         environment.name = name
         key = environment.put()
