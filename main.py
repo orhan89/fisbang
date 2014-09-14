@@ -24,13 +24,16 @@ from google.appengine.api import memcache
 
 STANDARD_LIMIT = 100
 
+SENSOR_TYPE = ((0, "voltage"),
+               (1, "current"))
+
 def get_sensor_data(sensor_id, time=None, limit=None):
     sensor_data = memcache.get('sensor_data:%s' % sensor_id)
     if sensor_data is None:
-        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
+        sensor = ndb.Key(urlsafe=sensor_id).get()
 
-        if sensor_data:
-            sensor_data = json.loads(sensor_data[0].data)
+        if sensor:
+            sensor_data = json.loads(sensor.data)
             memcache.add('sensor_data:%s' % sensor_id, sensor_data, 60)
         else:
             return None
@@ -46,12 +49,23 @@ def get_sensor_data(sensor_id, time=None, limit=None):
 
     return sensor_data
 
-class SensorData(ndb.Model):
+class Sensor(ndb.Model):
+    name = ndb.StringProperty(indexed=False)
+    type = ndb.IntegerProperty()
     data = ndb.StringProperty(indexed=False)
-
+    
     @classmethod
     def query_sensor(cls, sensor_id):
-        return cls.query(ancestor=ndb.Key('Sensor', sensor_id))
+        return cls.query(Sensor.id==sensor_id)
+
+class Device(ndb.Model):
+    name = ndb.StringProperty(indexed=False)
+
+class Environment(ndb.Model):
+    name = ndb.StringProperty(indexed=False)
+
+class Building(ndb.Model):
+    name = ndb.StringProperty(indexed=False)
 
 class TotalEnergyHandler(webapp2.RequestHandler):
 
@@ -211,19 +225,15 @@ class SensorDataHandler(webapp2.RequestHandler):
 
     def post(self, sensor_id):
 
-        sensor_data = SensorData.query_sensor(sensor_id).fetch(1)
-        if not sensor_data:
-            print "Create new sensor data"
-            sensor_data = SensorData(parent=ndb.Key('Sensor', sensor_id))
-            data = []
-        else:
-            print "Using existing sensor data"
-            sensor_data = sensor_data[0]
-            data = json.loads(sensor_data.data)
+        sensor = ndb.Key(urlsafe=sensor_id).get()
+        if not sensor:
+            self.response.write("Sensor Not Found")
+
+        data = json.loads(sensor[0].data)
 
         data.append(json.loads(self.request.body))
-        sensor_data.data = json.dumps(data)
-        sensor_data.put()
+        sensor[0].data = json.dumps(data)
+        sensor[0].put()
         if memcache.get('sensor_data:%s' % sensor_id):
             print "Updating memcache"
             memcache.set("sensor_data:%s" % sensor_id, data)
@@ -232,11 +242,116 @@ class SensorDataHandler(webapp2.RequestHandler):
             memcache.add('sensor_data:%s' % sensor_id, data, 60)        
         self.response.write("OK")
 
+
+class SensorHandler(webapp2.RequestHandler):
+    def post(self):
+        request_data = json.loads(self.request.body)
+        device_id = request_data['device_id']
+        name = request_data['name']
+        sensor_type = request_data['type']
+
+        sensor_list = Sensor.query(ancestor=ndb.Key(urlsafe=device_id)).fetch()
+        
+        print "Create new sensor"
+        sensor = Sensor(parent=ndb.Key(urlsafe=device_id))
+        
+        sensor.name = name
+        sensor.data = json.dumps([])
+        sensor.type = sensor_type
+        key = sensor.put()
+        
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"sensor_id": key.urlsafe()}))
+
+class DeviceHandler(webapp2.RequestHandler):
+    def get(self, device_id):
+        sensor_list = Sensor.query(ancestor=ndb.Key(urlsafe=device_id)).fetch()
+
+        sensor_id_list = [{"id":item.key.urlsafe(), "type":item.type} for item in sensor_list]
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"sensors":sensor_id_list}))
+
+    def post(self):
+        request_data = json.loads(self.request.body)
+        environment_id = request_data['environment_id']
+        name = request_data['name']
+
+        print "Create new device"
+        device = Device(parent=ndb.Key('Environment', environment_id))
+        
+        device.name = name
+        key = device.put()
+        
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"device_id": key.urlsafe()}))
+
+
+class EnvironmentHandler(webapp2.RequestHandler):
+    def get(self, environment_id):
+        device_list = Device.query(ancestor=ndb.Key('Environment', environment_id)).fetch()
+
+        device_id_list = [{"id":item.key.urlsafe(), "name":item.name} for item in device_list]
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"devices":device_id_list}))
+
+    def post(self):
+        request_data = json.loads(self.request.body)
+        building_id = request_data['building_id']
+        name = request_data['name']
+
+        print "Create new environment"
+        environment = Environment(parent=ndb.Key('Building', building_id))
+        
+        environment.name = name
+        key = environment.put()
+        
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"environment_id": key.urlsafe()}))
+
+class BuildingHandler(webapp2.RequestHandler):
+    def get(self, building_id):
+        environment_list = Environment.query(ancestor=ndb.Key('Building', building_id)).fetch()
+
+        environment_id_list = [{"id":item.key.urlsafe(), "name":item.name} for item in environment_list]
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"environments":environment_id_list}))
+
+    def post(self):
+        request_data = json.loads(self.request.body)
+        name = request_data['name']
+
+        print "Create new building"
+        building = Building()
+        
+        building.name = name
+        key = building.put()
+        
+        self.response.headers['Content-Type'] = 'application/json'
+        self.response.write(json.dumps({"building_id": key.urlsafe()}))
+
+# app = webapp2.WSGIApplication([
+#     ('/sensor/(\s)', SensorDataHandler),
+#     ('/sensor/(\d+)/monthly', MonthlyHandler),
+#     ('/sensor/(\d+)/weekly', WeeklyHandler),
+#     ('/sensor/(\d+)/daily', DailyHandler),
+#     ('/sensor/(\d+)/energy', TotalEnergyHandler),
+#     ('/sensor/(\d+)/energy2/(\d+)', TotalEnergy2Handler),
+#     ('/sensor', SensorHandler),
+#     ('/device/(\d+)', DeviceHandler)
+# ], debug=True)
+
 app = webapp2.WSGIApplication([
-    ('/sensor/(\d+)', SensorDataHandler),
-    ('/sensor/(\d+)/monthly', MonthlyHandler),
-    ('/sensor/(\d+)/weekly', WeeklyHandler),
-    ('/sensor/(\d+)/daily', DailyHandler),
-    ('/sensor/(\d+)/energy', TotalEnergyHandler),
-    ('/sensor/(\d+)/energy2/(\d+)', TotalEnergy2Handler),
+    webapp2.Route(r'/building', handler=BuildingHandler, methods=['POST']),
+    webapp2.Route(r'/building/<building_id>', handler=BuildingHandler, methods=['GET']),
+    webapp2.Route(r'/environment', handler=EnvironmentHandler, methods=['POST']),
+    webapp2.Route(r'/environment/<environment_id>', handler=EnvironmentHandler, methods=['GET']),
+    webapp2.Route(r'/device', handler=DeviceHandler, methods=['POST']),
+    webapp2.Route(r'/device/<device_id>', handler=DeviceHandler, methods=['GET']),
+    webapp2.Route(r'/sensor', handler=SensorHandler),
+    webapp2.Route(r'/sensor/<sensor_id>', handler=SensorDataHandler),
+    webapp2.Route(r'/sensor/<sensor_id>/daily', handler=DailyHandler),
+    webapp2.Route(r'/sensor/<sensor_id>/weekly', handler=WeeklyHandler),
+    webapp2.Route(r'/sensor/<sensor_id>/monthly', handler=MonthlyHandler),
+    webapp2.Route(r'/sensor/<sensor_id>/energy', handler=TotalEnergy2Handler),
+    webapp2.Route(r'/sensor/<sensor_id>/energy2/<wattage>', handler=TotalEnergy2Handler),
 ], debug=True)
