@@ -288,7 +288,7 @@ class DeviceHandler(webapp2.RequestHandler):
 
 class EnvironmentHandler(webapp2.RequestHandler):
     def get(self, environment_id):
-        device_list = Device.query(ancestor=ndb.Key('Environment', environment_id)).fetch()
+        device_list = Device.query(ancestor=ndb.Key(urlsafe=environment_id)).fetch()
 
         device_id_list = [{"id":item.key.urlsafe(), "name":item.name} for item in device_list]
         self.response.headers['Content-Type'] = 'application/json'
@@ -310,7 +310,7 @@ class EnvironmentHandler(webapp2.RequestHandler):
 
 class BuildingHandler(webapp2.RequestHandler):
     def get(self, building_id):
-        environment_list = Environment.query(ancestor=ndb.Key('Building', building_id)).fetch()
+        environment_list = Environment.query(ancestor=ndb.Key(urlsafe=building_id)).fetch()
 
         environment_id_list = [{"id":item.key.urlsafe(), "name":item.name} for item in environment_list]
         self.response.headers['Content-Type'] = 'application/json'
